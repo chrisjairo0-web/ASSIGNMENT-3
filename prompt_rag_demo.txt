@@ -1,0 +1,554 @@
+Create a minimum functional Python RAG demo as a Streamlit app for querying a technical PDF document.
+
+Primary demo document:
+- Use `User's Guide for the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)` as the example document for the demo.
+- The default PDF path must be `data/document.pdf`.
+- The architecture and UI must remain generic enough that another technical PDF can be swapped in later without redesigning the project.
+- The UI text, prompts, code comments, and internal architecture should be document-agnostic wherever practical.
+- It is acceptable for the README and example queries to mention C-MAPSS as the sample document used for the demo.
+
+Overall goal:
+- Build a practical end-to-end demo that works with minimal setup.
+- Prioritize reliability, readability, and simplicity.
+- Do not overengineer the project.
+- Explicitly demonstrate how RAG reduces hallucinations compared to a pure LLM approach.
+
+Project structure:
+
+1. `app.py`
+2. `src/`
+   - `src/__init__.py`
+   - `src/doc_ingestion.py`
+   - `src/hybrid_retriever.py`
+   - `src/response_generator.py`
+   - `src/ui_styles.py`
+3. `requirements.txt`
+4. `README.md`
+5. `data/`
+
+File naming requirements:
+- Use exactly these source filenames:
+  - `doc_ingestion.py`
+  - `hybrid_retriever.py`
+  - `response_generator.py`
+  - `ui_styles.py`
+
+Responsibilities:
+- `doc_ingestion.py`: PDF parsing, chunking, caching, FAISS build
+- `hybrid_retriever.py`: BM25 + embeddings + fusion + reranking
+- `response_generator.py`: Gemini integration, strict anti-hallucination prompting, and retrieval-only fallback
+- `ui_styles.py`: Streamlit styling
+
+----------------------------------------
+ANTI-HALLUCINATION REQUIREMENTS (CRITICAL)
+----------------------------------------
+
+- The system must explicitly minimize hallucinations.
+- The LLM must be instructed with a strict grounding policy:
+
+  "Answer ONLY using the provided retrieved context. 
+   If the answer is not contained in the context, say:
+   'I cannot find this information in the document.' 
+   Do NOT fabricate or infer missing information."
+
+- This instruction must always be included in the prompt to the LLM.
+- This instruction must be included ONLY in RAG answer generation prompts.
+- Do NOT include this strict grounding instruction in LLM-only prompts.
+- The app must clearly communicate to the user when:
+  - the answer is grounded in retrieved context
+  - or when the system cannot find the answer
+
+----------------------------------------
+RAG VS NON-RAG COMPARISON (CRITICAL)
+----------------------------------------
+
+- Add a toggle in the UI:
+
+  Mode:
+  [ ] RAG (retrieval-augmented)
+  [ ] LLM-only (no retrieval)
+
+- Behavior:
+  - RAG mode: use retrieval + context + LLM
+  - LLM-only mode: send the question directly to the model without context
+  - If no valid API key/provider is available, LLM-only mode must be disabled in the UI.
+  - In that case, the app must run in retrieval-only mode and show a clear notice that LLM-only requires a valid Gemini key.
+
+- The UI must clearly label:
+  - "RAG Mode (grounded answers)"
+  - "LLM-only Mode (may hallucinate)"
+
+- Encourage comparison by showing both outputs optionally.
+
+----------------------------------------
+PIPELINE VISIBILITY (CRITICAL)
+----------------------------------------
+
+The app must explicitly show the RAG pipeline to the user.
+
+Add a sidebar or expandable section showing:
+
+RAG Pipeline:
+1. Document ingestion
+2. Chunking
+3. Embedding
+4. Retrieval (BM25 + semantic)
+5. Reranking
+6. Answer generation
+
+- When a query is executed, display:
+
+Retrieved Chunks:
+- Rank
+- Score
+- Section (if available)
+- Page number
+- Text snippet
+
+Example display:
+
+Rank 1 | Score: 0.92 | Page 15 | Section 3.2  
+"Text snippet..."
+
+- This is mandatory to demonstrate how the system reasons.
+
+----------------------------------------
+FUNCTIONAL REQUIREMENTS
+----------------------------------------
+
+- The app must ingest a local PDF and answer questions grounded in its contents.
+- It must support two PDF input modes:
+  - upload a PDF
+  - provide a file path
+- Default path: `data/document.pdf`
+
+- The app must work even without an API key.
+- It must support:
+  - Google Gemini answer generation
+  - retrieval-only mode
+- Without an API key, retrieval-only must remain fully usable and become the default active mode.
+- If the user selects LLM-only without a valid key, show a user-friendly validation message and do not execute an LLM call.
+
+- Display source attribution including:
+  - rank
+  - section (if available)
+  - page number
+  - confidence score
+  - raw snippet
+
+----------------------------------------
+GOOGLE GEMINI REQUIREMENTS
+----------------------------------------
+
+- Use Google Gemini with native Gemini API integration.
+- Suggested model: `gemini-2.5-flash`
+- Keep integration simple.
+
+- Gemini is optional:
+  - if unavailable → fallback to retrieval-only mode
+
+----------------------------------------
+API KEY SECURITY
+----------------------------------------
+
+Priority:
+1. environment variable
+2. Streamlit secrets
+3. optional temporary sidebar input
+
+Rules:
+- do not store keys on disk
+- do not log keys
+- session-only memory for manual input
+
+- Validate API key with lightweight test
+- Show provider status:
+  - working
+  - invalid key
+  - quota issue
+  - network error
+  - fallback mode active
+
+----------------------------------------
+FALLBACK BEHAVIOR
+----------------------------------------
+
+- If Gemini fails:
+  - show friendly message
+  - fallback to retrieval-only
+- If no API key is configured, treat it as expected degraded mode (not a crash):
+  - keep RAG retrieval features available
+  - disable LLM-only
+  - show "fallback mode active" status
+
+----------------------------------------
+TECHNICAL REQUIREMENTS
+----------------------------------------
+
+- PDF parsing:
+  - `pdfplumber` primary
+  - `pypdf` fallback
+
+- Chunking:
+  - structure-aware if possible
+  - fallback to paragraphs/sentences
+
+Metadata per chunk:
+- page_start
+- section
+- section_title
+- chunk_index
+- token_count
+- chunk_type
+- contains_table
+
+- Embeddings:
+  - `sentence-transformers/all-mpnet-base-v2`
+
+- Retrieval:
+  - FAISS (semantic)
+  - BM25 (lexical)
+  - Reciprocal Rank Fusion
+
+- Reranking:
+  - `cross-encoder/ms-marco-MiniLM-L-6-v2`
+
+----------------------------------------
+CACHING
+----------------------------------------
+
+Store in `.cache/`:
+- chunks JSON
+- metadata JSON
+- FAISS index
+- uploaded PDFs
+
+Use UTF-8 encoding for Windows compatibility.
+
+----------------------------------------
+UI/UX REQUIREMENTS
+----------------------------------------
+
+- Style:
+  - clean technical documentation look
+  - neutral, professional
+
+- Show:
+  - indexing progress
+  - pipeline explanation
+  - example queries
+
+- Show clearly:
+  - retrieved evidence
+  - answer grounding
+  - system mode (RAG vs LLM-only)
+
+----------------------------------------
+USER WORKFLOW & FLOW CLARITY (CRITICAL)
+----------------------------------------
+
+The app must have a clear workflow that separates preparation from querying:
+
+1. Document Preparation (one-time per document):
+   - User selects PDF source: file path or upload.
+   - User clicks "Index Document" button explicitly.
+   - App shows progress: Extracting text... → Chunking... → Building embeddings... → Ready.
+   - State saved to `.cache/` with persistent indicator: "Document indexed: ✓ C-MAPSS (timestamp)".
+   - Once indexed, repeated queries reuse the cached index without re-indexing.
+
+2. Query Execution (after indexing):
+   - User enters question in text input field.
+   - User presses Enter OR clicks "Query" button.
+   - App retrieves top-5 chunks from cached index (instant, no indexing).
+   - App displays retrieved chunks and generates answer.
+   - User can submit multiple queries without re-indexing.
+
+3. Mode Awareness:
+   - Display active mode (RAG or LLM-only) prominently before each answer.
+   - If switching documents, trigger re-indexing if document hash differs.
+   - Show "Index ready" status after first indexing completes.
+
+Reasons this matters:
+  - Clarity: Users understand that indexing happens once, queries are fast.
+  - UX: Separates slow operation (indexing) from fast operation (querying).
+  - Performance expectation: Justifies why first interaction takes longer.
+  - Trust: Visible caching state shows work is not wasted.
+
+----------------------------------------
+EXAMPLE QUERIES AS INTERACTIVE BUTTONS
+----------------------------------------
+
+Example queries must be user-friendly and immediately actionable:
+
+- The "Example Queries" section with buttons must be placed INSIDE the
+  "Ask Your Question" section, directly above the query input field.
+  Do NOT place it as a standalone section above Document Indexing.
+  Reason: examples are suggestions for what to type, so they belong
+  next to the input field, not elsewhere in the page.
+
+- Show buttons, not Markdown links or plain text.
+- Each button pre-fills the query input field when clicked.
+- Example queries for C-MAPSS sample (use exact wording, concise and complete):
+  - "What is C-MAPSS?"
+  - "What assumptions does this model make?"
+  - "How are engine degradation effects represented?"
+  - "What does the closed-loop analysis section cover?"
+
+- Query labels must be complete sentences that fit on one button line without truncation.
+- Do NOT truncate button text (no [:40] + "..." or similar). Write short enough queries.
+- Buttons should be styled consistently with the theme.
+- Clicking a button should pre-fill the query input field.
+- After clicking, user can press Enter to query immediately.
+- The expander should be open by default (expanded=True) since it is inside Ask Your Question.
+
+Interaction flow:
+  1. User opens "Ask Your Question" section
+  2. User sees Example Queries buttons displayed above the input field
+  3. User clicks button: "What is C-MAPSS?"
+  4. Query input field is filled with the text
+  5. User presses Enter to execute OR clicks Query button
+  6. Results appear instantly because document is already indexed
+
+----------------------------------------
+LLM-ONLY MODE GUIDE
+----------------------------------------
+
+LLM-only mode MUST be clearly explained in UI and README:
+
+Purpose:
+  - Demonstrate difference between RAG (grounded) and pure LLM (ungrounded).
+  - Show how RAG reduces hallucinations by comparison.
+  - Educational: let users see LLM tendencies without retrieval context.
+
+When LLM-only is DISABLED:
+  - No valid Gemini API key configured.
+  - Show message: "LLM-only requires a valid Gemini API key."
+  - Only RAG mode (retrieval-only fallback) is available.
+
+When LLM-only is ENABLED (valid key):
+  - User can toggle between RAG and LLM-only modes.
+  - Clear label: "LLM-only Mode (may hallucinate)"
+  - Behavior: send question directly to Gemini WITHOUT retrieval context.
+  - Result: answer grounded=false, no Retrieved Chunks shown for clarity.
+  - Optional comparison: checkbox "Show RAG vs LLM-only side-by-side".
+
+Important UI notes for LLM-only:
+
+  ⚠️  CRITICAL IMPLEMENTATION WARNING — READ BEFORE CODING:
+
+  The `generate_llm_only_answer` function MUST use a completely separate prompt
+  from `generate_rag_answer`. These two functions have OPPOSITE grounding goals:
+
+  generate_rag_answer   → STRICT grounding policy (answer ONLY from context)
+  generate_llm_only_answer → FREE answer (answer from general knowledge, NO context)
+
+  DO NOT copy or reuse STRICT_GROUNDING_POLICY in the LLM-only prompt.
+  If you do, Gemini will always respond:
+      "I cannot find this information in the document."
+  because there is no retrieved context to ground on — which breaks the demo
+  completely and makes LLM-only mode indistinguishable from a broken state.
+
+  Correct LLM-only prompt template:
+      "You are a helpful assistant. Answer the following question using your
+       general knowledge. No document context is provided — this is intentional.
+       Answer as completely and clearly as you can.
+
+       Question: {question}"
+
+  NEVER add to LLM-only prompt:
+      - STRICT_GROUNDING_POLICY
+      - "Answer ONLY using the provided retrieved context."
+      - "If the answer is not contained in the context, say: ..."
+      - Any reference to retrieved context or document grounding.
+
+  - Do NOT retrieve and display chunks in LLM-only mode (no retrieval occurs).
+  - Show clear badge: "LLM-only Mode (may hallucinate)".
+  - In comparison view, show LLM-only answer alongside RAG answer for contrast.
+
+README guidance on LLM-only:
+  - Explain use case: educational comparison, hallucination demonstration.
+  - Show example: question where LLM hallucinates vs RAG grounds it.
+  - Warn: LLM-only has no document constraints; answers may be unreliable.
+  - Recommend: use RAG mode for real document QA, LLM-only for learning.
+
+----------------------------------------
+CACHING & PERSISTENCE VISIBILITY
+----------------------------------------
+
+Cache behavior must be visible and understandable to users:
+
+- Stored in `.cache/` folder with persistent naming:
+  - `chunks_{source_id}.json` — extracted and chunked text
+  - `metadata_{source_id}.json` — chunk metadata (page, section, token count)
+  - `faiss_{source_id}.index` — semantic search index
+  - `embeddings_{source_id}.npy` — embedding vectors
+  - `uploads/{source_id}.pdf` — uploaded PDFs (if using Upload mode)
+
+- Source ID is SHA256 hash of PDF bytes (first 16 chars), ensuring identical PDFs reuse cache.
+
+UI indicators:
+  - After first indexing: show "✓ Document indexed: <full_path> (<N> chunks, indexed at <timestamp>)"
+    Example: "✓ Document indexed: data/document.pdf (86 chunks, indexed at 2026-04-02 15:56:27)"
+  - On subsequent sessions: show "✓ Loaded from cache: <full_path> (<N> chunks, indexed at <timestamp>)"
+  - Use the full path (e.g. data/document.pdf), NOT just the filename.
+    Reason: user may have PDFs in different folders; full path avoids ambiguity.
+  - If document changes: automatically reindex and update cache.
+  - Show cache state in UI regardless of source (file path or upload).
+
+Caching benefits:
+  - Cold start (first run): 20-45 seconds for typical 100-page PDF.
+  - Warm start (same PDF, new session): 5 seconds (load chunks from JSON + embeddings from disk).
+  - Subsequent queries in same session: instant (already in memory).
+
+User should understand:
+  - First query with new PDF is slow: computing embeddings.
+  - Second session with same PDF: faster, loading from `.cache/`.
+  - Switching documents: will reindex only if different from cached.
+
+----------------------------------------
+QUERY INPUT & KEYBOARD EXPERIENCE
+----------------------------------------
+
+Query input must be fast and keyboard-friendly:
+
+- Use Streamlit text_input (not large text area) for single-line questions.
+- Support form submission with Enter key:
+  - Enter submits query immediately.
+  - No Shift+Enter needed; queries are declarative.
+- Button "Query" is secondary, compact, and positioned next to input field.
+- After query results, focus returns to input field for quick follow-ups.
+- Validate: if input is empty and user presses Enter, show friendly message (not error).
+
+----------------------------------------
+GEMINI TEMPERATURE & MODE TAXONOMY (CRITICAL)
+----------------------------------------
+
+The app must expose Gemini temperature controls and clearly distinguish operational cases.
+
+Temperature control requirements:
+- Add a Gemini temperature control in the sidebar.
+- Include quick preset buttons:
+  - `T=0.0`
+  - `T=0.2`
+  - `T=0.7`
+- Include a slider for fine-grained control:
+  - min: 0.0
+  - max: 1.5
+  - step: 0.1
+- Apply the selected temperature to ALL Gemini generation calls:
+  - RAG+Gemini answer generation
+  - LLM-only answer generation
+
+Mode taxonomy to display in UI:
+1. RAG-puro (retrieval-only, no Gemini)
+   - Trigger: no valid Gemini API key OR Gemini provider failure
+   - Behavior: retrieval-only answer from top evidence/snippet template
+
+2. RAG+Gemini deterministic (T=0.00)
+   - Trigger: RAG mode + valid Gemini + temperature == 0
+   - Behavior: grounded answer generation with lower output variability
+
+3. RAG+Gemini stochastic (T>0)
+   - Trigger: RAG mode + valid Gemini + temperature > 0
+   - Behavior: grounded answer generation with higher output variability
+
+4. Gemini-only deterministic (T=0.00)
+   - Trigger: LLM-only mode + valid Gemini + temperature == 0
+   - Behavior: ungrounded answer generation, lower variability
+
+5. Gemini-only stochastic (T>0)
+   - Trigger: LLM-only mode + valid Gemini + temperature > 0
+   - Behavior: ungrounded answer generation, higher variability
+
+Comparison panel guidance:
+- Primary recommended comparison (for reproducibility):
+  - Left: RAG+Gemini deterministic (T=0)
+  - Right: Gemini-only deterministic (T=0)
+- Optional secondary comparison (for creativity/variance demos):
+  - Compare both with the same T>0 value (example: T=0.7)
+
+Labeling requirements:
+- Every answer panel must show an explicit mode label including temperature.
+- Suggested labels:
+  - `RAG-puro (retrieval-only, sin Gemini)`
+  - `RAG+Gemini determinista (grounded answers, T=0.00)`
+  - `RAG+Gemini (grounded answers, T={value})`
+  - `Gemini-puro (LLM-only, T={value})`
+
+Grounding semantics clarification:
+- Grounded: answer constrained to retrieved document context.
+- Ungrounded: answer generated from general model knowledge without retrieval context.
+
+----------------------------------------
+ROBUSTNESS
+----------------------------------------
+
+- Handle imperfect PDFs
+- Mention limitations:
+  - diagrams not fully interpreted
+  - scanned PDFs need OCR
+
+----------------------------------------
+README REQUIREMENTS
+----------------------------------------
+
+- Explain RAG pipeline:
+  - ingestion
+  - chunking
+  - embeddings
+  - retrieval
+  - reranking
+  - generation
+
+- Explain:
+  - hallucination problem
+  - how RAG mitigates it
+  - difference vs LLM-only mode
+
+- Explain `.cache/`
+- Explain setup and run
+- Explain Gemini configuration
+
+- Add User Guide section:
+  - How to index a document (one-time step with "Index Document" button).
+  - How to query the indexed document (enter question and press Enter or button).
+  - What RAG mode does (grounded answers with retrieved evidence).
+  - What LLM-only mode does (ungrounded comparison for learning).
+  - When each mode is useful and when LLM-only is disabled.
+  - How to interpret Retrieved Chunks: rank, score, confidence, page, section.
+  - Why caching matters: speed improvement on repeated use.
+  - Example workflow: upload PDF → index → ask questions → optional comparison.
+
+- Add LLM-only Mode Guide section:
+  - Purpose: educational comparison and hallucination demonstration.
+  - Enabled only with valid Gemini API key configured.
+  - When to use: learning about RAG, understanding model biases, comparing behaviors.
+  - How to use: toggle mode selector to "LLM-only", ask question, compare result with RAG.
+  - Side-by-side comparison: enable "Show RAG vs LLM-only comparison" checkbox.
+  - Example scenarios: question where LLM hallucinates with certainty vs RAG says "not in document".
+  - Limitations: LLM-only has no document constraints; may generate confidence but be wrong.
+  - Recommendation: use RAG for reliable document QA, LLM-only for learning.
+
+- Add Troubleshooting section:
+  - "First query is slow": 20-45 seconds for first PDF indexing (computing embeddings), cached on disk.
+  - "LLM-only mode is disabled": need to configure Gemini API key (env var, secrets, or sidebar).
+  - "No retrieved chunks found": low confidence retrieval; try rephrasing question or ask related topics.
+  - "Cached files growing in .cache/": normal; safe to delete (will recompute on next run).
+  - "Same document, different sessions": .cache/ loaded automatically, no re-indexing needed.
+
+----------------------------------------
+CODE QUALITY
+----------------------------------------
+
+- clear structure
+- readable functions
+- minimal dependencies
+- runnable end-to-end
+
+----------------------------------------
+IMPLEMENTATION GUIDANCE
+----------------------------------------
+
+- Generate complete files
+- Avoid overengineering
+- Keep beginner-friendly

@@ -1,0 +1,40 @@
+# Cache — computed automatically, do not commit
+.cache/
+
+# PDF documents — may be large or proprietary, load your own
+# data/document.pdf is included as the demo sample (C-MAPSS)
+data/*.pdf
+!data/document.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets — NEVER commit API keys
+.streamlit/secrets.toml
+*.env
+.env
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
